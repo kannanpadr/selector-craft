@@ -1,0 +1,14 @@
+AutoLocate AI - Project Descriptions
+
+[Tagline / 1-Sentence Summary]
+An AI-powered Chrome Extension that visually captures page elements, generates optimized CSS/XPath locators, and exports test automation scripts for Playwright, Cypress, and Selenium.
+
+[Short Description - 50 Words]
+AutoLocate AI is a developer utility that simplifies E2E test script writing. Visually inspect webpage elements or select them using natural language AI prompts. Powered by Google Gemini, the extension generates robust, resilient selectors and instantly exports structured scripts for Playwright (JS/Python), Cypress, and Selenium (Java/Python/JS).
+
+[Bullet Points]
+- Hover inspect and visual sequence numbering badges
+- AI locator optimizer (evaluates outerHTML stability)
+- Semantic multi-element selector via natural language prompts
+- Playwright, Cypress, and Selenium script compilers
+- Rule-based script generation fallback mode (no API key required)

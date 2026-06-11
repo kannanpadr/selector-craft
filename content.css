@@ -1,0 +1,90 @@
+/* AI Inspector Styles - Injected into the target page */
+
+/* Hover highlighting box */
+.ai-inspector-hover-box {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2147483640; /* High z-index to overlay on top of page content */
+  border: 2px dashed #6366f1; /* Beautiful Indigo dashed border */
+  background-color: rgba(99, 102, 241, 0.15); /* Light indigo tint */
+  border-radius: 4px;
+  transition: all 0.08s ease;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+}
+
+/* Tooltip displaying element details */
+.ai-inspector-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2147483645;
+  background-color: #1e1b4b; /* Deep indigo dark background */
+  color: #e0e7ff; /* Soft indigo text */
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  white-space: nowrap;
+}
+
+.ai-inspector-tooltip .tag-name {
+  color: #f472b6; /* Pink tag name */
+}
+
+.ai-inspector-tooltip .id-name {
+  color: #fb7185; /* Coral ID */
+}
+
+.ai-inspector-tooltip .class-name {
+  color: #38bdf8; /* Light blue class names */
+}
+
+/* Selection Badges (Numbered circles for sequence steps) */
+.ai-selection-badge {
+  position: absolute;
+  z-index: 2147483630;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); /* Indigo gradient */
+  color: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px #ffffff, 0 4px 6px rgba(0, 0, 0, 0.3);
+  pointer-events: auto; /* Allow clicks so user can click to remove or interact */
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.ai-selection-badge:hover {
+  transform: scale(1.2);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); /* Red on hover to indicate removal */
+}
+
+.ai-selection-badge::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid #ef4444;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ai-selection-badge:hover::after {
+  opacity: 1;
+}
+
+/* Selection outline for clicked elements */
+.ai-inspected-element-selected {
+  outline: 2px solid #10b981 !important; /* Emerald green outline */
+  outline-offset: 2px;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.5) !important;
+}

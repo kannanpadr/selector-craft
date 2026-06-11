@@ -1,0 +1,12 @@
+{
+  "name": "ai-locator-extension-test",
+  "version": "1.0.0",
+  "description": "Validation test suite for AI Automation Locator Chrome Extension",
+  "main": "test_extension.js",
+  "scripts": {
+    "test": "node test_extension.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}
