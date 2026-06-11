@@ -14,6 +14,13 @@ foreach ($f in $files) {
     Copy-Item "$srcDir\$f" "$destDir\$f"
 }
 Copy-Item "$srcDir\icons" "$destDir\icons" -Recurse | Out-Null
+# Create ZIP archive of the extension folder
+$zipPath = "$srcDir\chromeextension.zip"
+if (Test-Path $zipPath) {
+    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+}
+Compress-Archive -Path "$destDir\*" -DestinationPath $zipPath -Force
+Write-Host "[OK] Source zip archive generated at D:\Chromeextension\chromeextension.zip"
 
 # Find Chrome path
 $chromePaths = @(

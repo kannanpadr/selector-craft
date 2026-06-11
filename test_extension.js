@@ -134,9 +134,25 @@ async function runBrowserTests() {
     // 8. Test action configuration selection
     console.log("Configuring step action selector to 'Assert Visible'...");
     await sidepanelPage.selectOption(".step-action-select", "assertVisible");
+
+    // 9. Test Live Selector Verification (Assertion Runner)
+    console.log("Testing live selector verification inside Builder step...");
+    await sidepanelPage.click(".step-verify-btn");
+    await sidepanelPage.waitForTimeout(500);
+
+    // 10. Test Session Recorder checkbox
+    console.log("Activating Session Recorder checkbox in sidepanel...");
+    await sidepanelPage.evaluate(() => {
+      const checkbox = document.getElementById("recorder-toggle");
+      if (checkbox) {
+        checkbox.checked = true;
+        checkbox.dispatchEvent(new Event("change"));
+      }
+    });
+    await sidepanelPage.waitForTimeout(500);
     
-    // 9. Generate script fallback test
-    console.log("Generating test script...");
+    // 11. Generate standard fallback script
+    console.log("Generating standard test script...");
     await sidepanelPage.click("#generate-script-btn");
     await sidepanelPage.waitForSelector("#code-result-drawer", { state: "visible", timeout: 2000 });
     
@@ -147,7 +163,35 @@ async function runBrowserTests() {
 
     // Close Code drawer
     await sidepanelPage.click("#close-code-drawer-btn");
-    console.log("✓ Closed generated script drawer panel.");
+    await sidepanelPage.waitForSelector("#code-result-drawer", { state: "hidden", timeout: 2000 });
+
+    // 12. Test POM checkbox and POM script fallback generation
+    console.log("Activating Export as POM checkbox...");
+    await sidepanelPage.evaluate(() => {
+      const pomCheckbox = document.getElementById("pom-export-checkbox");
+      if (pomCheckbox) {
+        pomCheckbox.checked = true;
+        pomCheckbox.dispatchEvent(new Event("change"));
+      }
+    });
+    await sidepanelPage.waitForTimeout(500);
+
+    console.log("Generating POM test script...");
+    await sidepanelPage.click("#generate-script-btn");
+    await sidepanelPage.waitForSelector("#code-result-drawer", { state: "visible", timeout: 2000 });
+
+    const pomGeneratedCode = await sidepanelPage.locator("#code-output-block").innerText();
+    console.log("✓ Generated POM code preview (First 150 chars):");
+    console.log("----------------------------------------");
+    console.log(pomGeneratedCode.substring(0, 150) + "...\n----------------------------------------");
+
+    if (!pomGeneratedCode.includes("MyPage.js")) {
+      throw new Error("Page Object Model export does not contain expected MyPage.js template structure.");
+    }
+    console.log("✓ Page Object Model structure verified successfully!");
+
+    // Close Code drawer
+    await sidepanelPage.click("#close-code-drawer-btn");
 
     console.log("=== Playwright Browser Verification Successful! ===");
   } catch (err) {

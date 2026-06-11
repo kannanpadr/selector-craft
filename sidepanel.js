@@ -29,6 +29,7 @@ const apiStatusLabel = document.getElementById("api-status-label");
 
 // Inspector Elements
 const inspectorToggle = document.getElementById("inspector-toggle");
+const recorderToggle = document.getElementById("recorder-toggle");
 const inspectorEmptyState = document.getElementById("inspector-empty-state");
 const inspectorDetails = document.getElementById("inspector-details");
 const inspectedTag = document.getElementById("inspected-tag");
@@ -61,6 +62,7 @@ const aiSearchErrorMsg = document.getElementById("ai-search-error-msg");
 
 // Builder Elements
 const frameworkSelect = document.getElementById("framework-select");
+const pomExportCheckbox = document.getElementById("pom-export-checkbox");
 const clearAllStepsBtn = document.getElementById("clear-all-steps");
 const builderEmptyState = document.getElementById("builder-empty-state");
 const stepsListContainer = document.getElementById("steps-list-container");
@@ -251,7 +253,21 @@ async function validateApiKey(key) {
 // -------------------------------------------------------------
 function setupInspector() {
   inspectorToggle.addEventListener("change", (e) => {
+    // Exclude recorder if inspector is turned on
+    if (e.target.checked && recorderToggle.checked) {
+      recorderToggle.checked = false;
+      toggleRecording(false);
+    }
     toggleInspector(e.target.checked);
+  });
+
+  recorderToggle.addEventListener("change", (e) => {
+    // Exclude inspector if recorder is turned on
+    if (e.target.checked && inspectorToggle.checked) {
+      inspectorToggle.checked = false;
+      toggleInspector(false);
+    }
+    toggleRecording(e.target.checked);
   });
 
   // Handle adding current selected item to step builder list
@@ -311,6 +327,70 @@ async function toggleInspector(enable) {
   });
 }
 
+async function toggleRecording(enable) {
+  const tab = await getActiveTab();
+  if (!tab) return;
+
+  chrome.tabs.sendMessage(tab.id, {
+    action: "SET_RECORDING",
+    enabled: enable
+  }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.warn("[sidepanel] Could not toggle recorder:", chrome.runtime.lastError.message);
+      recorderToggle.checked = false;
+      showToast("Please refresh the webpage to enable recording.");
+    }
+  });
+}
+
+async function verifyLocator(selector, buttonElement) {
+  const tab = await getActiveTab();
+  if (!tab) {
+    showToast("Webpage tab not found.");
+    return;
+  }
+  
+  const originalText = buttonElement.innerText;
+  buttonElement.innerText = "Checking...";
+  
+  chrome.tabs.sendMessage(tab.id, {
+    action: "VERIFY_SELECTOR",
+    selector: selector
+  }, (response) => {
+    if (chrome.runtime.lastError || !response) {
+      buttonElement.innerText = originalText;
+      showToast("Verification failed. Make sure tab content script is active.");
+      return;
+    }
+    
+    // Remove old state classes
+    buttonElement.classList.remove("success", "multiple", "failed");
+    
+    if (response.status === "OK") {
+      const count = response.count;
+      if (count === 1) {
+        buttonElement.innerText = "1 Match";
+        buttonElement.classList.add("success");
+      } else if (count > 1) {
+        buttonElement.innerText = `${count} Matches`;
+        buttonElement.classList.add("multiple");
+      } else {
+        buttonElement.innerText = "0 Matches";
+        buttonElement.classList.add("failed");
+      }
+    } else {
+      buttonElement.innerText = "Error";
+      buttonElement.classList.add("failed");
+      showToast(`Verify Error: ${response.message}`);
+    }
+    
+    setTimeout(() => {
+      buttonElement.innerText = originalText;
+      buttonElement.classList.remove("success", "multiple", "failed");
+    }, 2500);
+  });
+}
+
 // Listen for selection events from content script
 chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
   if (message.action === "ELEMENT_SELECTED") {
@@ -325,6 +405,14 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
       showAiLocatorNoKey();
     }
   } 
+  
+  else if (message.action === "ELEMENT_RECORDED") {
+    // If the recorder is checked, add this element directly to steps
+    if (recorderToggle.checked) {
+      addStepToBuilder(message.element);
+      showToast(`Recorded: ${message.element.tagName}`);
+    }
+  }
   
   else if (message.action === "ELEMENT_REMOVED") {
     // Handle synchronization if user clicked badge to delete
@@ -587,6 +675,11 @@ function updateStepsUI() {
       <div class="step-header">
         <span class="step-number-badge">${index + 1}</span>
         <span class="step-element-label" title="${step.selector}">${step.label}</span>
+        <button class="step-verify-btn" data-index="${index}" title="Verify Element on page">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path fill="currentColor" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+          </svg>
+        </button>
         <button class="step-remove-btn" data-index="${index}" title="Remove Step">
           <svg viewBox="0 0 24 24" width="16" height="16">
             <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
@@ -624,6 +717,38 @@ function updateStepsUI() {
 
     input.addEventListener("input", (e) => {
       selectedSteps[index].value = e.target.value;
+    });
+
+    // Verify single step listener
+    stepEl.querySelector(".step-verify-btn").addEventListener("click", async () => {
+      const btn = stepEl.querySelector(".step-verify-btn");
+      const tab = await getActiveTab();
+      if (!tab) {
+        showToast("Webpage tab not found.");
+        return;
+      }
+      
+      chrome.tabs.sendMessage(tab.id, {
+        action: "VERIFY_SELECTOR",
+        selector: step.selector
+      }, (response) => {
+        if (chrome.runtime.lastError || !response || response.status !== "OK") {
+          btn.className = "step-verify-btn failed";
+          showToast("Verify failed.");
+        } else {
+          const count = response.count;
+          if (count > 0) {
+            btn.className = "step-verify-btn success";
+            showToast(`Found ${count} matching element(s)!`);
+          } else {
+            btn.className = "step-verify-btn failed";
+            showToast("0 elements matched on page.");
+          }
+        }
+        setTimeout(() => {
+          btn.className = "step-verify-btn";
+        }, 2000);
+      });
     });
 
     // Remove listener
@@ -668,8 +793,17 @@ async function generateScriptWithAI(framework) {
     text: s.text || ""
   }));
 
+  const isPOM = pomExportCheckbox.checked;
+  let pomPromptAddendum = "";
+  if (isPOM) {
+    pomPromptAddendum = `\n\nSince Page Object Model (POM) export is enabled, please generate BOTH:
+    1. A Page Object Class file (e.g. declaring selectors, constructor taking the page/driver instance, and descriptive action methods like fillLoginForm or clickSubmit).
+    2. A clean E2E test script file that imports/instantiates the Page Object class and calls its actions to perform the steps sequence.
+    Please output both files clearly marked with banner comments, e.g. "// --- LoginPage.js ---" and "// --- login_flow_test.js ---".`;
+  }
+
   const prompt = `Generate a complete, production-ready, professionally written end-to-end automation test script in the "${framework}" framework based on the following step sequence performed on a page.
-  Ensure the script contains appropriate import headers, setups (like launching page browser context), correct assertions, logical wait-for strategies, and inline comments describing each action.
+  Ensure the script contains appropriate import headers, setups (like launching page browser context), correct assertions, logical wait-for strategies, and inline comments describing each action.${pomPromptAddendum}
   
   Steps sequence:
   ${JSON.stringify(stepsPayload, null, 2)}
@@ -696,8 +830,415 @@ async function generateScriptWithAI(framework) {
   }
 }
 
+// Heuristic POM Template Fallback when API key is unavailable and POM is checked
+function generatePOMFallback(framework) {
+  let code = "";
+  const dateStr = new Date().toISOString().split('T')[0];
+
+  if (framework.startsWith("playwright")) {
+    const isPy = framework === "playwright-py";
+    if (isPy) {
+      // playwright-py
+      let locators = "";
+      let methods = "";
+      let actions = "";
+      selectedSteps.forEach((s, i) => {
+        const selectorEscaped = s.selector.replace(/'/g, "\\'");
+        const valEscaped = (s.value || "").replace(/'/g, "\\'");
+        
+        locators += `        # Step ${i + 1}: Target ${s.tagName}\n`;
+        locators += `        self.element${i + 1} = page.locator('${selectorEscaped}')\n`;
+
+        if (s.action === "click") {
+          methods += `    def click_element${i + 1}(self):\n        self.element${i + 1}.click()\n\n`;
+          actions += `    my_page.click_element${i + 1}()\n`;
+        } else if (s.action === "type") {
+          methods += `    def type_element${i + 1}(self, value):\n        self.element${i + 1}.fill(value)\n\n`;
+          actions += `    my_page.type_element${i + 1}('${valEscaped}')\n`;
+        } else if (s.action === "hover") {
+          methods += `    def hover_element${i + 1}(self):\n        self.element${i + 1}.hover()\n\n`;
+          actions += `    my_page.hover_element${i + 1}()\n`;
+        } else if (s.action === "assertVisible") {
+          methods += `    def assert_visible_element${i + 1}(self):\n        expect(self.element${i + 1}).to_be_visible()\n\n`;
+          actions += `    my_page.assert_visible_element${i + 1}()\n`;
+        } else if (s.action === "assertText") {
+          methods += `    def assert_text_element${i + 1}(self, text):\n        expect(self.element${i + 1}).to_have_text(text)\n\n`;
+          actions += `    my_page.assert_text_element${i + 1}('${valEscaped}')\n`;
+        } else if (s.action === "waitFor") {
+          methods += `    def wait_for_element${i + 1}(self):\n        self.element${i + 1}.wait_for(state="visible")\n\n`;
+          actions += `    my_page.wait_for_element${i + 1}()\n`;
+        }
+      });
+
+      code = `# --- my_page.py (Page Object Model) ---
+# Generated on ${dateStr}
+from playwright.sync_api import Page, expect
+
+class MyPage:
+    def __init__(self, page: Page):
+        self.page = page
+        # Element Locators
+${locators}
+    def goto(self):
+        self.page.goto("https://your-webapp.com")
+
+${methods}
+# --- test_script.py (E2E Test) ---
+from playwright.sync_api import sync_playwright
+from my_page import MyPage
+
+def test_automation_flow():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page()
+        my_page = MyPage(page)
+        my_page.goto()
+        
+        # Actions
+${actions}        
+        browser.close()
+`;
+    } else {
+      // playwright-js
+      let locators = "";
+      let methods = "";
+      let actions = "";
+      selectedSteps.forEach((s, i) => {
+        const selectorEscaped = s.selector.replace(/'/g, "\\'");
+        const valEscaped = (s.value || "").replace(/'/g, "\\'");
+        
+        locators += `    // Step ${i + 1}: Target ${s.tagName}\n`;
+        locators += `    this.element${i + 1} = page.locator('${selectorEscaped}');\n`;
+
+        if (s.action === "click") {
+          methods += `  async clickElement${i + 1}() {\n    await this.element${i + 1}.click();\n  }\n\n`;
+          actions += `  await myPage.clickElement${i + 1}();\n`;
+        } else if (s.action === "type") {
+          methods += `  async typeElement${i + 1}(value) {\n    await this.element${i + 1}.fill(value);\n  }\n\n`;
+          actions += `  await myPage.typeElement${i + 1}('${valEscaped}');\n`;
+        } else if (s.action === "hover") {
+          methods += `  async hoverElement${i + 1}() {\n    await this.element${i + 1}.hover();\n  }\n\n`;
+          actions += `  await myPage.hoverElement${i + 1}();\n`;
+        } else if (s.action === "assertVisible") {
+          methods += `  async assertVisibleElement${i + 1}() {\n    await expect(this.element${i + 1}).toBeVisible();\n  }\n\n`;
+          actions += `  await myPage.assertVisibleElement${i + 1}();\n`;
+        } else if (s.action === "assertText") {
+          methods += `  async assertTextElement${i + 1}(text) {\n    await expect(this.element${i + 1}).toHaveText(text);\n  }\n\n`;
+          actions += `  await myPage.assertTextElement${i + 1}('${valEscaped}');\n`;
+        } else if (s.action === "waitFor") {
+          methods += `  async waitForElement${i + 1}() {\n    await this.element${i + 1}.waitFor({ state: 'visible' });\n  }\n\n`;
+          actions += `  await myPage.waitForElement${i + 1}();\n`;
+        }
+      });
+
+      code = `// --- MyPage.js (Page Object Model) ---
+// Generated on ${dateStr}
+const { expect } = require('@playwright/test');
+
+class MyPage {
+  constructor(page) {
+    this.page = page;
+    // Element Locators
+${locators}  }
+
+  async goto() {
+    await this.page.goto('https://your-webapp.com');
+  }
+
+${methods}}
+
+module.exports = { MyPage };
+
+// --- test.js (E2E Test) ---
+const { test } = require('@playwright/test');
+const { MyPage } = require('./MyPage');
+
+test('POM test flow - ${dateStr}', async ({ page }) => {
+  const myPage = new MyPage(page);
+  await myPage.goto();
+${actions}});
+`;
+    }
+  } 
+  
+  else if (framework === "cypress") {
+    let getters = "";
+    let methods = "";
+    let actions = "";
+    selectedSteps.forEach((s, i) => {
+      const selectorEscaped = s.selector.replace(/'/g, "\\'");
+      const valEscaped = (s.value || "").replace(/'/g, "\\'");
+      
+      getters += `  getElement${i + 1}() {\n    return cy.get('${selectorEscaped}');\n  }\n\n`;
+
+      if (s.action === "click") {
+        methods += `  clickElement${i + 1}() {\n    this.getElement${i + 1}().click();\n  }\n\n`;
+        actions += `    myPage.clickElement${i + 1}();\n`;
+      } else if (s.action === "type") {
+        methods += `  typeElement${i + 1}(value) {\n    this.getElement${i + 1}().type(value);\n  }\n\n`;
+        actions += `    myPage.typeElement${i + 1}('${valEscaped}');\n`;
+      } else if (s.action === "hover") {
+        methods += `  hoverElement${i + 1}() {\n    this.getElement${i + 1}().trigger('mouseover');\n  }\n\n`;
+        actions += `    myPage.hoverElement${i + 1}();\n`;
+      } else if (s.action === "assertVisible") {
+        methods += `  assertVisibleElement${i + 1}() {\n    this.getElement${i + 1}().should('be.visible');\n  }\n\n`;
+        actions += `    myPage.assertVisibleElement${i + 1}();\n`;
+      } else if (s.action === "assertText") {
+        methods += `  assertTextElement${i + 1}(text) {\n    this.getElement${i + 1}().should('have.text', text);\n  }\n\n`;
+        actions += `    myPage.assertTextElement${i + 1}('${valEscaped}');\n`;
+      } else if (s.action === "waitFor") {
+        methods += `  waitForElement${i + 1}() {\n    this.getElement${i + 1}().should('exist');\n  }\n\n`;
+        actions += `    myPage.waitForElement${i + 1}();\n`;
+      }
+    });
+
+    code = `// --- MyPage.js (Page Object Model) ---
+// Generated on ${dateStr}
+class MyPage {
+  visit() {
+    cy.visit('https://your-webapp.com');
+  }
+
+${getters}${methods}}
+
+export default MyPage;
+
+// --- spec.cy.js (E2E Test) ---
+import MyPage from './MyPage';
+
+describe('POM test flow - ${dateStr}', () => {
+  const myPage = new MyPage();
+
+  it('performs sequence steps', () => {
+    myPage.visit();
+${actions}  });
+});
+`;
+  } 
+  
+  else if (framework.startsWith("selenium")) {
+    if (framework === "selenium-py") {
+      let locators = "";
+      let methods = "";
+      let actions = "";
+      selectedSteps.forEach((s, i) => {
+        const selectorEscaped = s.selector.replace(/'/g, "\\'");
+        const valEscaped = (s.value || "").replace(/'/g, "\\'");
+        const isXpath = s.selector.startsWith("//") || s.selector.startsWith("(/");
+        const byType = isXpath ? "By.XPATH" : "By.CSS_SELECTOR";
+
+        locators += `        # Step ${i + 1}: Target ${s.tagName}\n`;
+        locators += `        self.element${i + 1}_locator = (${byType}, '${selectorEscaped}')\n`;
+
+        if (s.action === "click") {
+          methods += `    def click_element${i + 1}(self):\n        self.driver.find_element(*self.element${i + 1}_locator).click()\n\n`;
+          actions += `driver_page.click_element${i + 1}()\n`;
+        } else if (s.action === "type") {
+          methods += `    def type_element${i + 1}(self, value):\n        self.driver.find_element(*self.element${i + 1}_locator).send_keys(value)\n\n`;
+          actions += `driver_page.type_element${i + 1}('${valEscaped}')\n`;
+        } else if (s.action === "hover") {
+          methods += `    def hover_element${i + 1}(self):\n        from selenium.webdriver.common.action_chains import ActionChains\n        el = self.driver.find_element(*self.element${i + 1}_locator)\n        ActionChains(self.driver).move_to_element(el).perform()\n\n`;
+          actions += `driver_page.hover_element${i + 1}()\n`;
+        } else if (s.action === "assertVisible") {
+          methods += `    def assert_visible_element${i + 1}(self):\n        assert self.driver.find_element(*self.element${i + 1}_locator).is_displayed()\n\n`;
+          actions += `driver_page.assert_visible_element${i + 1}()\n`;
+        } else if (s.action === "assertText") {
+          methods += `    def assert_text_element${i + 1}(self, text):\n        assert text in self.driver.find_element(*self.element${i + 1}_locator).text\n\n`;
+          actions += `driver_page.assert_text_element${i + 1}('${valEscaped}')\n`;
+        } else if (s.action === "waitFor") {
+          methods += `    def wait_for_element${i + 1}(self):\n        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located(self.element${i + 1}_locator))\n\n`;
+          actions += `driver_page.wait_for_element${i + 1}()\n`;
+        }
+      });
+
+      code = `# --- my_page.py (Page Object Model) ---
+# Generated on ${dateStr}
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+class MyPage:
+    def __init__(self, driver):
+        self.driver = driver
+        # Element Locators
+${locators}
+    def goto(self):
+        self.driver.get("https://your-webapp.com")
+
+${methods}
+# --- test_script.py (E2E Test) ---
+from selenium import webdriver
+from my_page import MyPage
+
+driver = webdriver.Chrome()
+driver_page = MyPage(driver)
+driver_page.goto()
+
+# Actions
+${actions}
+driver.quit()
+`;
+    } 
+    
+    else if (framework === "selenium-js") {
+      let locators = "";
+      let methods = "";
+      let actions = "";
+      selectedSteps.forEach((s, i) => {
+        const selectorEscaped = s.selector.replace(/'/g, "\\'");
+        const valEscaped = (s.value || "").replace(/'/g, "\\'");
+        const isXpath = s.selector.startsWith("//") || s.selector.startsWith("(/");
+        const byMethod = isXpath ? `By.xpath('${selectorEscaped}')` : `By.css('${selectorEscaped}')`;
+
+        locators += `    // Step ${i + 1}: Target ${s.tagName}\n`;
+        locators += `    this.element${i + 1}Locator = ${byMethod};\n`;
+
+        if (s.action === "click") {
+          methods += `  async clickElement${i + 1}() {\n    await this.driver.findElement(this.element${i + 1}Locator).click();\n  }\n\n`;
+          actions += `    await myPage.clickElement${i + 1}();\n`;
+        } else if (s.action === "type") {
+          methods += `  async typeElement${i + 1}(value) {\n    await this.driver.findElement(this.element${i + 1}Locator).sendKeys(value);\n  }\n\n`;
+          actions += `    await myPage.typeElement${i + 1}('${valEscaped}');\n`;
+        } else if (s.action === "hover") {
+          methods += `  async hoverElement${i + 1}() {\n    const actions = this.driver.actions({bridge: true});\n    const el = await this.driver.findElement(this.element${i + 1}Locator);\n    await actions.move({duration: 100, origin: el, x: 0, y: 0}).perform();\n  }\n\n`;
+          actions += `    await myPage.hoverElement${i + 1}();\n`;
+        } else if (s.action === "assertVisible") {
+          methods += `  async assertVisibleElement${i + 1}() {\n    const isDisplayed = await this.driver.findElement(this.element${i + 1}Locator).isDisplayed();\n    if (!isDisplayed) throw new Error('Element not visible');\n  }\n\n`;
+          actions += `    await myPage.assertVisibleElement${i + 1}();\n`;
+        } else if (s.action === "assertText") {
+          methods += `  async assertTextElement${i + 1}(text) {\n    const elText = await this.driver.findElement(this.element${i + 1}Locator).getText();\n    if (!elText.includes(text)) throw new Error('Text mismatch');\n  }\n\n`;
+          actions += `    await myPage.assertTextElement${i + 1}('${valEscaped}');\n`;
+        } else if (s.action === "waitFor") {
+          methods += `  async waitForElement${i + 1}() {\n    await this.driver.wait(until.elementLocated(this.element${i + 1}Locator), 10000);\n  }\n\n`;
+          actions += `    await myPage.waitForElement${i + 1}();\n`;
+        }
+      });
+
+      code = `// --- MyPage.js (Page Object Model) ---
+// Generated on ${dateStr}
+const { By, until } = require('selenium-webdriver');
+
+class MyPage {
+  constructor(driver) {
+    this.driver = driver;
+    // Element Locators
+${locators}  }
+
+  async goto() {
+    await this.driver.get('https://your-webapp.com');
+  }
+
+${methods}}
+
+module.exports = { MyPage };
+
+// --- test.js (E2E Test) ---
+const { Builder } = require('selenium-webdriver');
+const { MyPage } = require('./MyPage');
+
+(async function example() {
+  let driver = await new Builder().forBrowser('chrome').build();
+  try {
+    const myPage = new MyPage(driver);
+    await myPage.goto();
+${actions}  } finally {
+    await driver.quit();
+  }
+})();
+`;
+    } 
+    
+    else if (framework === "selenium-java") {
+      let locators = "";
+      let methods = "";
+      let actions = "";
+      selectedSteps.forEach((s, i) => {
+        const selectorEscaped = s.selector.replace(/"/g, "\\\"");
+        const valEscaped = (s.value || "").replace(/"/g, "\\\"");
+        const isXpath = s.selector.startsWith("//") || s.selector.startsWith("(/");
+        const byStr = isXpath ? `By.xpath("${selectorEscaped}")` : `By.cssSelector("${selectorEscaped}")`;
+
+        locators += `    // Step ${i + 1}: Target ${s.tagName}\n`;
+        locators += `    private By element${i + 1}Locator = ${byStr};\n`;
+
+        if (s.action === "click") {
+          methods += `    public void clickElement${i + 1}() {\n        driver.findElement(element${i + 1}Locator).click();\n    }\n\n`;
+          actions += `            myPage.clickElement${i + 1}();\n`;
+        } else if (s.action === "type") {
+          methods += `    public void typeElement${i + 1}(String value) {\n        driver.findElement(element${i + 1}Locator).sendKeys(value);\n    }\n\n`;
+          actions += `            myPage.typeElement${i + 1}("${valEscaped}");\n`;
+        } else if (s.action === "hover") {
+          methods += `    public void hoverElement${i + 1}() {\n        actions.moveToElement(driver.findElement(element${i + 1}Locator)).perform();\n    }\n\n`;
+          actions += `            myPage.hoverElement${i + 1}();\n`;
+        } else if (s.action === "assertVisible") {
+          methods += `    public void assertVisibleElement${i + 1}() {\n        assert driver.findElement(element${i + 1}Locator).isDisplayed();\n    }\n\n`;
+          actions += `            myPage.assertVisibleElement${i + 1}();\n`;
+        } else if (s.action === "assertText") {
+          methods += `    public void assertTextElement${i + 1}(String text) {\n        assert driver.findElement(element${i + 1}Locator).getText().contains(text);\n    }\n\n`;
+          actions += `            myPage.assertTextElement${i + 1}("${valEscaped}");\n`;
+        } else if (s.action === "waitFor") {
+          methods += `    public void waitForElement${i + 1}() {\n        wait.until(ExpectedConditions.visibilityOfElementLocated(element${i + 1}Locator));\n    }\n\n`;
+          actions += `            myPage.waitForElement${i + 1}();\n`;
+        }
+      });
+
+      code = `// --- MyPage.java (Page Object Model) ---
+// Generated on ${dateStr}
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.interactions.Actions;
+import java.time.Duration;
+
+public class MyPage {
+    private WebDriver driver;
+    private WebDriverWait wait;
+    private Actions actions;
+
+    // Element Locators
+${locators}
+    public MyPage(WebDriver driver) {
+        this.driver = driver;
+        this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        this.actions = new Actions(driver);
+    }
+
+    public void gotoPage() {
+        driver.get("https://your-webapp.com");
+    }
+
+${methods}}
+
+// --- AutomationFlow.java (E2E Test) ---
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+
+public class AutomationFlow {
+    public static void main(String[] args) {
+        WebDriver driver = new ChromeDriver();
+        try {
+            MyPage myPage = new MyPage(driver);
+            myPage.gotoPage();
+${actions}        } finally {
+            driver.quit();
+        }
+    }
+}
+`;
+    }
+  }
+
+  codeOutputBlock.innerText = code;
+}
+
 // Heuristic Template Fallback when API key is unavailable
 function generateScriptFallback(framework) {
+  if (pomExportCheckbox.checked) {
+    generatePOMFallback(framework);
+    return;
+  }
   let code = "";
   const dateStr = new Date().toISOString().split('T')[0];
 
@@ -1017,6 +1558,19 @@ function setupCodeDrawer() {
             btn.classList.remove("copied");
           }, 1200);
         });
+      }
+    });
+  });
+
+  // Verify standard locator hooks in Inspector Tab
+  document.querySelectorAll(".verify-btn-mini").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-verify-target");
+      const targetInput = document.getElementById(targetId);
+      if (targetInput && targetInput.value && targetInput.value !== "-") {
+        verifyLocator(targetInput.value, btn);
+      } else {
+        showToast("No selector available to verify.");
       }
     });
   });

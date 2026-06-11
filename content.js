@@ -10,6 +10,7 @@
   window.hasAILocatorScriptInjected = true;
 
   let isInspecting = false;
+  let isRecording = false;
   let hoveredElement = null;
   let selectedElements = []; // List of selected DOM elements
   let badgeElements = [];    // List of badge DOM elements drawn on page
@@ -145,6 +146,29 @@
     
     return selector;
   }
+
+  // Query elements using CSS selector or XPath
+  function querySelectorAll(selector) {
+    if (!selector) return [];
+    
+    // Check if it is an XPath
+    if (selector.startsWith("//") || selector.startsWith("(/")) {
+      const results = [];
+      try {
+        const query = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let i = 0; i < query.snapshotLength; i++) {
+          results.push(query.snapshotItem(i));
+        }
+      } catch (e) {
+        console.error("XPath evaluation failed:", e);
+      }
+      return results;
+    }
+    
+    // Default to CSS query selector
+    return Array.from(document.querySelectorAll(selector));
+  }
+
 
   // Highlight an element on hover
   function highlightElement(el) {
@@ -432,7 +456,99 @@
       }
     }
     
+    else if (message.action === "SET_RECORDING") {
+      isRecording = message.enabled;
+      sendResponse({ status: "OK", recording: isRecording });
+    }
+    
+    else if (message.action === "VERIFY_SELECTOR") {
+      const selector = message.selector;
+      try {
+        const matches = querySelectorAll(selector);
+        matches.forEach(el => {
+          el.classList.remove("ai-flash-highlight");
+          void el.offsetWidth; // Trigger reflow to restart animation if needed
+          el.classList.add("ai-flash-highlight");
+          setTimeout(() => el.classList.remove("ai-flash-highlight"), 1200);
+        });
+        sendResponse({ status: "OK", count: matches.length });
+      } catch (err) {
+        sendResponse({ status: "ERROR", message: err.message });
+      }
+    }
+    
     return true; // Keep message channel open for async response
   });
+
+  // -------------------------------------------------------------
+  // SESSION RECORDER INTERCEPTORS
+  // -------------------------------------------------------------
+  function recordStep(el, action, value) {
+    // Prevent duplicate logs in a short duration
+    const now = Date.now();
+    if (el.lastRecordedTime && (now - el.lastRecordedTime < 300)) {
+      return;
+    }
+    el.lastRecordedTime = now;
+    
+    const elementData = {
+      tagName: el.tagName.toLowerCase(),
+      id: el.id || "",
+      name: el.getAttribute("name") || "",
+      placeholder: el.getAttribute("placeholder") || "",
+      type: el.getAttribute("type") || "",
+      role: el.getAttribute("role") || "",
+      innerText: el.innerText ? el.innerText.trim().substring(0, 80) : "",
+      outerHTML: el.outerHTML.substring(0, 1000),
+      cssSelector: generateCSSSelector(el),
+      xpath: generateXPath(el),
+      action: action,
+      value: value,
+      label: el.id ? `#${el.id}` : `${el.tagName.toLowerCase()}${el.innerText ? ` "${el.innerText.trim().substring(0, 15)}"` : ""}`
+    };
+    
+    chrome.runtime.sendMessage({
+      action: "ELEMENT_RECORDED",
+      element: elementData
+    });
+  }
+
+  // Intercept user clicks during recording
+  document.addEventListener("click", (e) => {
+    if (!isRecording) return;
+    
+    // Ignore clicks on overlays, badges, and tooltips
+    if (e.target === hoverBox || e.target === tooltip || e.target.classList.contains("ai-selection-badge")) {
+      return;
+    }
+    
+    const el = e.target;
+    
+    // Filter to interactive elements
+    const isInteractive = el.tagName === "BUTTON" || 
+                          el.tagName === "A" || 
+                          (el.tagName === "INPUT" && !["text", "email", "password", "number", "tel", "url"].includes(el.type)) ||
+                          el.hasAttribute("onclick") || 
+                          el.getAttribute("role") === "button";
+                          
+    if (isInteractive) {
+      recordStep(el, "click", "");
+    }
+  }, true); // Capture phase
+
+  // Capture input changes when user finishes editing (blur)
+  document.addEventListener("blur", (e) => {
+    if (!isRecording) return;
+    
+    const el = e.target;
+    const isTextInput = el.tagName === "INPUT" && ["text", "email", "password", "number", "tel", "url"].includes(el.type || "text");
+    const isTextArea = el.tagName === "TEXTAREA";
+    const isSelect = el.tagName === "SELECT";
+    
+    if (isTextInput || isTextArea || isSelect) {
+      const val = el.value || "";
+      recordStep(el, isSelect ? "click" : "type", val);
+    }
+  }, true); // Capture phase (blur does not bubble)
 
 })();

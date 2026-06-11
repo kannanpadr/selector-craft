@@ -1028,3 +1028,66 @@ input:checked + .slider:before {
 .code-scroll .comment { color: #64748b; font-style: italic; }
 .code-scroll .function { color: #38bdf8; }
 .code-scroll .number { color: #fb923c; }
+
+/* Live locator verify buttons */
+.verify-btn-mini {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: none;
+  border-left: 1px solid var(--border-color);
+  padding: 0 10px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.verify-btn-mini:hover {
+  background-color: #d97706; /* Amber hover */
+  color: white;
+}
+
+.verify-btn-mini.success {
+  background-color: var(--success-color) !important;
+  color: white !important;
+}
+
+.verify-btn-mini.multiple {
+  background-color: #f59e0b !important; /* Yellow-amber */
+  color: white !important;
+}
+
+.verify-btn-mini.failed {
+  background-color: var(--danger-color) !important;
+  color: white !important;
+}
+
+/* Step Item verification button */
+.step-verify-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background-color 0.2s;
+  vertical-align: middle;
+}
+
+.step-verify-btn:hover {
+  color: #fbbf24;
+  background-color: rgba(251, 191, 36, 0.08);
+}
+
+.step-verify-btn.success {
+  color: var(--success-color) !important;
+}
+
+.step-verify-btn.failed {
+  color: var(--danger-color) !important;
+}

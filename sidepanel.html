@@ -69,6 +69,16 @@
               <span class="slider round"></span>
             </label>
           </div>
+          <div class="toggle-container" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 10px;">
+            <div class="toggle-text">
+              <h3>Session Recorder</h3>
+              <p>Auto-record visual interactions on the webpage.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="recorder-toggle">
+              <span class="slider round"></span>
+            </label>
+          </div>
         </div>
 
         <div id="inspector-empty-state" class="empty-state">
@@ -101,6 +111,7 @@
                 <span class="locator-label">CSS Selector</span>
                 <div class="copy-input-container">
                   <input type="text" id="locator-css" readonly value="input#email">
+                  <button class="verify-btn-mini" data-verify-target="locator-css" title="Verify matches on page">Verify</button>
                   <button class="copy-btn-mini" data-copy-target="locator-css" title="Copy Selector">Copy</button>
                 </div>
               </div>
@@ -108,6 +119,7 @@
                 <span class="locator-label">XPath Expression</span>
                 <div class="copy-input-container">
                   <input type="text" id="locator-xpath" readonly value="//*[@id='email']">
+                  <button class="verify-btn-mini" data-verify-target="locator-xpath" title="Verify matches on page">Verify</button>
                   <button class="copy-btn-mini" data-copy-target="locator-xpath" title="Copy XPath">Copy</button>
                 </div>
               </div>
@@ -131,6 +143,7 @@
               <div class="ai-locator-content" id="ai-locator-content">
                 <div class="copy-input-container">
                   <input type="text" id="locator-ai-selector" readonly value="[data-testid='submit-login']">
+                  <button class="verify-btn-mini" data-verify-target="locator-ai-selector" title="Verify matches on page">Verify</button>
                   <button class="copy-btn-mini" data-copy-target="locator-ai-selector">Copy</button>
                 </div>
                 <div class="ai-explanation">
@@ -197,6 +210,12 @@
               <option value="selenium-py">Selenium (Python)</option>
               <option value="selenium-js">Selenium (Node.js)</option>
             </select>
+          </div>
+          <div class="pom-checkbox-wrapper" style="margin-bottom: 4px;">
+            <label class="checkbox-label" for="pom-export-checkbox" style="font-size: 11px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-secondary); font-weight: 500;">
+              <input type="checkbox" id="pom-export-checkbox" style="cursor: pointer; width: 14px; height: 14px; accent-color: var(--accent-color);">
+              <span>Export as POM</span>
+            </label>
           </div>
           <button class="btn-text-danger" id="clear-all-steps" title="Clear all steps">
             Clear All
