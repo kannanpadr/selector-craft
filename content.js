@@ -323,13 +323,49 @@
     // Custom CSS selector parsing to support Playwright's :has-text() in standard browser queries
     if (selector.includes(":has-text(")) {
       try {
-        const hasTextMatch = selector.match(/:has-text\(\s*["']([^"']+)["']\s*\)/);
-        if (hasTextMatch) {
-          const targetText = hasTextMatch[1];
-          // Strip the :has-text() portion to run standard selector queries
-          const baseSelector = selector.replace(/:has-text\(\s*["'][^"']+["']\s*\)/g, "");
-          const candidates = Array.from(document.querySelectorAll(baseSelector || "*"));
-          return candidates.filter(el => (el.textContent || el.innerText || "").includes(targetText));
+        // 1. Table row anchor format: tr:has(td:has-text("John Doe")) > td:nth-child(2) ...
+        const tableCSSMatch = selector.match(/^tr:has\(td:has-text\("((?:[^"\\]|\\.)*)"\)\)(.*)$/);
+        if (tableCSSMatch) {
+          const anchorText = tableCSSMatch[1].replace(/\\"/g, '"');
+          const remainder = tableCSSMatch[2].trim();
+          
+          const rows = Array.from(document.querySelectorAll("table tr"));
+          const matchedRows = rows.filter(row => {
+            const cells = Array.from(row.querySelectorAll("td, th"));
+            return cells.some(cell => (cell.textContent || cell.innerText || "").trim().includes(anchorText));
+          });
+          
+          const results = [];
+          matchedRows.forEach(row => {
+            if (!remainder) {
+              results.push(row);
+            } else {
+              const querySel = remainder.startsWith(">") ? `:scope ${remainder}` : remainder;
+              const found = Array.from(row.querySelectorAll(querySel));
+              results.push(...found);
+            }
+          });
+          return results;
+        }
+
+        // 2. Simple element:has-text("text") format
+        const simpleHasTextMatch = selector.match(/^([a-zA-Z0-9#._-]+):has-text\("([^"]+)"\)(.*)$/);
+        if (simpleHasTextMatch) {
+          const baseTag = simpleHasTextMatch[1];
+          const targetText = simpleHasTextMatch[2];
+          const remainder = simpleHasTextMatch[3].trim();
+          const candidates = Array.from(document.querySelectorAll(baseTag));
+          const matched = candidates.filter(el => (el.textContent || el.innerText || "").includes(targetText));
+          
+          if (!remainder) return matched;
+          
+          const results = [];
+          matched.forEach(parent => {
+            const querySel = remainder.startsWith(">") ? `:scope ${remainder}` : remainder;
+            const found = Array.from(parent.querySelectorAll(querySel));
+            results.push(...found);
+          });
+          return results;
         }
       } catch (err) {
         console.error("Custom selector :has-text parsing failed:", err);
