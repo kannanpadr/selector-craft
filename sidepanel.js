@@ -47,6 +47,9 @@ const aiLocatorLoading = document.getElementById("ai-locator-loading");
 const aiLocatorError = document.getElementById("ai-locator-error");
 const aiLocatorContent = document.getElementById("ai-locator-content");
 const locatorAiSelectorInput = document.getElementById("locator-ai-selector");
+const locatorAiCssInput = document.getElementById("locator-ai-css");
+const locatorAiXpathInput = document.getElementById("locator-ai-xpath");
+const locatorAiPlaywrightInput = document.getElementById("locator-ai-playwright");
 const locatorAiExplanation = document.getElementById("locator-ai-explanation");
 
 // AI Search Elements
@@ -225,26 +228,58 @@ function updateApiStatus(success, message) {
 }
 
 // Quick validation call to Gemini
+// Quick validation call to Gemini or OpenAI
 async function validateApiKey(key) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiState.model}:generateContent?key=${key}`;
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: "Hello. Respond with one word 'OK'." }] }]
-      })
-    });
-    if (response.ok) {
-      updateApiStatus(true, "API Connection Verified!");
-    } else {
-      const errorData = await response.json();
-      console.error("API error details:", errorData);
-      updateApiStatus(false, "Invalid API Key or Model selection");
+  const isGPT = apiState.model.startsWith("gpt");
+  
+  if (isGPT) {
+    const url = "https://api.openai.com/v1/chat/completions";
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: apiState.model,
+          messages: [{ role: "user", content: "Hello. Respond with one word 'OK'." }],
+          max_tokens: 5
+        })
+      });
+      if (response.ok) {
+        updateApiStatus(true, "OpenAI API Connection Verified!");
+      } else {
+        const errorData = await response.json();
+        console.error("OpenAI API error details:", errorData);
+        updateApiStatus(false, "Invalid OpenAI Key or Model");
+      }
+    } catch (err) {
+      console.error("OpenAI API validation error:", err);
+      updateApiStatus(false, "OpenAI connection failed");
     }
-  } catch (err) {
-    console.error("API validation error:", err);
-    updateApiStatus(false, "Network connection failed");
+  } else {
+    // Gemini
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiState.model}:generateContent?key=${key}`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: "Hello. Respond with one word 'OK'." }] }]
+        })
+      });
+      if (response.ok) {
+        updateApiStatus(true, "Gemini API Connection Verified!");
+      } else {
+        const errorData = await response.json();
+        console.error("API error details:", errorData);
+        updateApiStatus(false, "Invalid API Key or Model selection");
+      }
+    } catch (err) {
+      console.error("API validation error:", err);
+      updateApiStatus(false, "Network connection failed");
+    }
   }
 }
 
@@ -456,17 +491,19 @@ function showAiLocatorNoKey() {
   aiLocatorError.style.display = "block";
 }
 
-// Call Gemini to optimize CSS selector and XPath
+// Call Gemini to optimize CSS selector, XPath, and Playwright queries
 async function optimizeLocatorWithAI(el) {
   aiLocatorLoading.style.display = "flex";
   aiLocatorContent.style.display = "none";
   aiLocatorError.style.display = "none";
 
-  const prompt = `Analyze the following HTML snippet of an element to find on a webpage. Suggest the single most robust and stable CSS Selector or XPath locator for automated end-to-end testing (prioritizing custom test-ids, stable names, roles, or distinctive content over long nested selectors or dynamic CSS classes).
+  const prompt = `Analyze the following HTML snippet of an element to find on a webpage. Suggest multiple robust and stable locator options for automated end-to-end testing (prioritizing custom test-ids, stable names, roles, or distinctive content over long nested selectors or dynamic CSS classes).
   
-  Respond with a JSON object containing exactly two keys:
-  1. "selector": The suggested CSS selector or XPath (must start with // if XPath).
-  2. "explanation": A brief, one-sentence description of why this locator is robust and dynamic-resistant.
+  Respond with a JSON object containing exactly four keys:
+  1. "css": A robust and stable CSS Selector.
+  2. "xpath": A robust and stable XPath locator (must start with //).
+  3. "playwright": A native Playwright locator statement (e.g., page.getByRole("button", { name: "Submit" }), page.getByPlaceholder("email"), page.getByTestId("login"), page.getByText("Click here"), etc.).
+  4. "explanation": A brief, one-sentence description of why these locators are robust and dynamic-resistant.
   
   HTML:
   ${el.outerHTML}
@@ -476,8 +513,13 @@ async function optimizeLocatorWithAI(el) {
 
   try {
     const res = await callGemini(prompt, true);
-    if (res && res.selector) {
-      locatorAiSelectorInput.value = res.selector;
+    if (res && res.css && res.xpath && res.playwright) {
+      locatorAiCssInput.value = res.css;
+      locatorAiXpathInput.value = res.xpath;
+      locatorAiPlaywrightInput.value = res.playwright;
+      
+      // Default to CSS for standard builder selection
+      locatorAiSelectorInput.value = res.css;
       locatorAiExplanation.innerText = res.explanation;
       
       aiLocatorLoading.style.display = "none";
@@ -489,7 +531,12 @@ async function optimizeLocatorWithAI(el) {
     console.error("AI locator generation error:", err);
     aiLocatorLoading.style.display = "none";
     aiLocatorError.style.display = "block";
-    // Populate standard CSS as locator fallback
+    
+    // Fallbacks
+    locatorAiCssInput.value = el.cssSelector;
+    locatorAiXpathInput.value = el.xpath;
+    locatorAiPlaywrightInput.value = `page.locator('${el.cssSelector.replace(/'/g, "\\'")}')`;
+    
     locatorAiSelectorInput.value = el.cssSelector;
     locatorAiExplanation.innerText = "Fallback: Direct CSS Selector used due to API response error.";
     aiLocatorContent.style.display = "block";
@@ -1459,43 +1506,88 @@ async function callGemini(prompt, isJSONResponse = false) {
     throw new Error("No API key configured");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiState.model}:generateContent?key=${apiState.key}`;
+  const isGPT = apiState.model.startsWith("gpt");
 
-  const body = {
-    contents: [
-      {
-        parts: [
-          { text: prompt }
-        ]
-      }
-    ],
-    generationConfig: {
+  if (isGPT) {
+    const url = "https://api.openai.com/v1/chat/completions";
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiState.key}`
+    };
+
+    const body = {
+      model: apiState.model,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
       temperature: 0.1
+    };
+
+    if (isJSONResponse) {
+      body.response_format = { type: "json_object" };
     }
-  };
 
-  if (isJSONResponse) {
-    body.generationConfig.responseMimeType = "application/json";
-  }
+    const response = await fetch(url, {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(body)
+    });
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
+    if (!response.ok) {
+      const errorJson = await response.json();
+      throw new Error(errorJson.error?.message || `OpenAI API error (${response.status})`);
+    }
 
-  if (!response.ok) {
-    const errorJson = await response.json();
-    throw new Error(errorJson.error?.message || `API error (${response.status})`);
-  }
+    const data = await response.json();
+    const textResponse = data.choices?.[0]?.message?.content;
+    
+    if (isJSONResponse) {
+      return JSON.parse(textResponse);
+    }
+    return textResponse;
+  } else {
+    // Gemini
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiState.model}:generateContent?key=${apiState.key}`;
 
-  const data = await response.json();
-  const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  
-  if (isJSONResponse) {
-    return JSON.parse(textResponse);
+    const body = {
+      contents: [
+        {
+          parts: [
+            { text: prompt }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.1
+      }
+    };
+
+    if (isJSONResponse) {
+      body.generationConfig.responseMimeType = "application/json";
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json();
+      throw new Error(errorJson.error?.message || `API error (${response.status})`);
+    }
+
+    const data = await response.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (isJSONResponse) {
+      return JSON.parse(textResponse);
+    }
   }
   return textResponse;
 }

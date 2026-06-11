@@ -141,12 +141,31 @@
                 <p class="sub-text">Defaulting to standard locators. Add a key in Settings to unlock.</p>
               </div>
               <div class="ai-locator-content" id="ai-locator-content">
-                <div class="copy-input-container">
-                  <input type="text" id="locator-ai-selector" readonly value="[data-testid='submit-login']">
-                  <button class="verify-btn-mini" data-verify-target="locator-ai-selector" title="Verify matches on page">Verify</button>
-                  <button class="copy-btn-mini" data-copy-target="locator-ai-selector">Copy</button>
+                <input type="hidden" id="locator-ai-selector" value="">
+                <div class="locator-row" style="margin-bottom: 8px;">
+                  <span class="locator-label">AI CSS Selector</span>
+                  <div class="copy-input-container">
+                    <input type="text" id="locator-ai-css" readonly value="">
+                    <button class="verify-btn-mini" data-verify-target="locator-ai-css" title="Verify matches on page">Verify</button>
+                    <button class="copy-btn-mini" data-copy-target="locator-ai-css">Copy</button>
+                  </div>
                 </div>
-                <div class="ai-explanation">
+                <div class="locator-row" style="margin-bottom: 8px;">
+                  <span class="locator-label">AI XPath Selector</span>
+                  <div class="copy-input-container">
+                    <input type="text" id="locator-ai-xpath" readonly value="">
+                    <button class="verify-btn-mini" data-verify-target="locator-ai-xpath" title="Verify matches on page">Verify</button>
+                    <button class="copy-btn-mini" data-copy-target="locator-ai-xpath">Copy</button>
+                  </div>
+                </div>
+                <div class="locator-row" style="margin-bottom: 8px;">
+                  <span class="locator-label">AI Playwright Locators</span>
+                  <div class="copy-input-container">
+                    <input type="text" id="locator-ai-playwright" readonly value="">
+                    <button class="copy-btn-mini" data-copy-target="locator-ai-playwright">Copy</button>
+                  </div>
+                </div>
+                <div class="ai-explanation" style="margin-top: 10px;">
                   <h5>Rationale:</h5>
                   <p id="locator-ai-explanation">Selected data-testid attribute since it is standard for end-to-end automation and unaffected by structural style refactoring.</p>
                 </div>
@@ -259,11 +278,21 @@
           </div>
 
           <div class="input-group">
-            <label for="settings-model">Gemini Model</label>
+            <label for="settings-model">AI Engine Model</label>
             <select id="settings-model">
               <option value="gemini-2.0-flash">gemini-2.0-flash (Recommended)</option>
+              <option value="gemini-3.5-flash">gemini-3.5-flash (Gemini 3.5 Flash)</option>
+              <option value="gemini-3.5-pro">gemini-3.5-pro (Gemini 3.5 Pro)</option>
+              <option value="gpt-4o">gpt-4o (OpenAI GPT-4o)</option>
+              <option value="gpt-4o-mini">gpt-4o-mini (OpenAI GPT-4o Mini)</option>
+              <option value="gpt-4-turbo">gpt-4-turbo (OpenAI GPT-4 Turbo)</option>
+              <option value="gpt-3.5-turbo">gpt-3.5-turbo (OpenAI GPT-3.5 Turbo)</option>
+              <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (Faster, lightweight)</option>
+              <option value="gemini-2.0-pro-exp-02-05">gemini-2.0-pro (High intelligence, experimental)</option>
               <option value="gemini-1.5-flash">gemini-1.5-flash</option>
               <option value="gemini-1.5-pro">gemini-1.5-pro (More thorough, slower)</option>
+              <option value="gemini-2.5-flash">gemini-2.5-flash (Upcoming model)</option>
+              <option value="gemini-2.5-pro">gemini-2.5-pro (Upcoming model)</option>
             </select>
           </div>
 
